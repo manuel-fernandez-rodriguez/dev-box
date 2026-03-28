@@ -27,34 +27,58 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get git tag for this run
-        id: get_tag
+      - name: Get image tags for this run
+        id: get_tags
         run: |
-          # if release event
+          # Determine a chosen tag (from release, workflow input, or tags pointing at this commit)
+          chosen=""
+
           if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          # workflow_dispatch with explicit tag input
+            chosen="${{ github.event.release.tag_name }}"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            chosen="${{ github.event.inputs.tag }}"
           else
-            # find tags pointing at this commit
             git fetch --tags --force
             tags=$(git tag --points-at $GITHUB_SHA)
 
-            if [ -z "$tags" ]; then
-              echo "tag=" >> $GITHUB_OUTPUT
-            else
-              # try to select highest semver-like tag (version sort)
+            if [ -n "$tags" ]; then
               semver_tag=$(echo "$tags" | grep -E '^v?[0-9]+(\.[0-9]+)*$' | sort -V | tail -n1)
               if [ -n "$semver_tag" ]; then
                 chosen="$semver_tag"
               else
-                # fallback: deterministic lexicographic choice
                 chosen=$(echo "$tags" | sort | tail -n1)
               fi
-              echo "tag=$chosen" >> $GITHUB_OUTPUT
             fi
           fi
+
+          # Build up the list of tags to push (one per line)
+          TAGS=""
+
+          # Include 'latest' when running on main branch or when this is a release
+          if [ "${GITHUB_REF#refs/heads/}" = "main" ] || [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            TAGS="ghcr.io/${{ github.repository_owner }}/dev-box:latest"
+          fi
+
+          # Always include the commit SHA tag
+          if [ -z "$TAGS" ]; then
+            TAGS="ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
+          else
+            TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
+          fi
+
+          # If a chosen tag exists, include it
+          if [ -n "$chosen" ]; then
+            TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${chosen}"
+          fi
+
+          # Remove any empty lines
+          TAGS=$(echo "$TAGS" | sed '/^$/d')
+
+          # Set outputs: the chosen tag (if any) and the full tags list
+          echo "tag=$chosen" >> $GITHUB_OUTPUT
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAGS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -73,13 +97,4 @@ jobs:
           file: ./src/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/dev-box:latest
-            ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}
-
-      - name: Retag and push image for git tag
-        if: steps.get_tag.outputs.tag != ''
-        run: |
-          docker pull ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}
-          docker tag ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }} ghcr.io/${{ github.repository_owner }}/dev-box:${{ steps.get_tag.outputs.tag }}
-          docker push ghcr.io/${{ github.repository_owner }}/dev-box:${{ steps.get_tag.outputs.tag }}
+          tags: ${{ steps.get_tags.outputs.tags }}
