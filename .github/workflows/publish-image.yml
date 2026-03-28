@@ -3,9 +3,6 @@ name: Publish dev-box image
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - '*'
   workflow_dispatch:
     inputs:
       tag:
@@ -30,7 +27,7 @@ jobs:
       - name: Get image tags for this run
         id: get_tags
         run: |
-          # Determine a chosen tag (from release, workflow input, or tags pointing at this commit)
+          # Determine a chosen tag (from release or workflow input)
           chosen=""
 
           if [ "$GITHUB_EVENT_NAME" = "release" ]; then
@@ -38,17 +35,7 @@ jobs:
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
             chosen="${{ github.event.inputs.tag }}"
           else
-            git fetch --tags --force
-            tags=$(git tag --points-at $GITHUB_SHA)
-
-            if [ -n "$tags" ]; then
-              semver_tag=$(echo "$tags" | grep -E '^v?[0-9]+(\.[0-9]+)*$' | sort -V | tail -n1)
-              if [ -n "$semver_tag" ]; then
-                chosen="$semver_tag"
-              else
-                chosen=$(echo "$tags" | sort | tail -n1)
-              fi
-            fi
+            chosen=""
           fi
 
           # Build up the list of tags to push (one per line)
@@ -60,11 +47,7 @@ jobs:
           fi
 
           # Always include the commit SHA tag
-          if [ -z "$TAGS" ]; then
-            TAGS="ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
-          else
-            TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
-          fi
+          TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
 
           # If a chosen tag exists, include it
           if [ -n "$chosen" ]; then
