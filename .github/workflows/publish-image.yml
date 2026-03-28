@@ -5,8 +5,8 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Optional image tag to attach (e.g. v1.2.3 or stable)'
+      tags:
+        description: 'Optional space-separated image tags to attach (e.g. "v1.2.3 stable")'
         required: false
         default: ''
 
@@ -27,15 +27,15 @@ jobs:
       - name: Get image tags for this run
         id: get_tags
         run: |
-          # Determine a chosen tag (from release or workflow input)
-          chosen=""
+          # Determine chosen tags (space-separated when provided via workflow input `tags`)
+          chosen_list=""
 
           if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-            chosen="${{ github.event.release.tag_name }}"
-          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
-            chosen="${{ github.event.inputs.tag }}"
+            chosen_list="${{ github.event.release.tag_name }}"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tags }}" ]; then
+            chosen_list="${{ github.event.inputs.tags }}"
           else
-            chosen=""
+            chosen_list=""
           fi
 
           # Build up the list of tags to push (one per line)
@@ -49,16 +49,17 @@ jobs:
           # Always include the commit SHA tag
           TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${{ github.sha }}"
 
-          # If a chosen tag exists, include it
-          if [ -n "$chosen" ]; then
-            TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${chosen}"
+          # If chosen tags exist, include each one (space-separated list)
+          if [ -n "$chosen_list" ]; then
+            for t in $chosen_list; do
+              TAGS="$TAGS"$'\n'"ghcr.io/${{ github.repository_owner }}/dev-box:${t}"
+            done
           fi
 
           # Remove any empty lines
           TAGS=$(echo "$TAGS" | sed '/^$/d')
 
-          # Set outputs: the chosen tag (if any) and the full tags list
-          echo "tag=$chosen" >> $GITHUB_OUTPUT
+          # Set outputs: the full tags list (newline-separated)
           echo "tags<<EOF" >> $GITHUB_OUTPUT
           echo "$TAGS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -81,4 +82,4 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.get_tags.outputs.tags }}
-          attest: ''
+          provenance: false
