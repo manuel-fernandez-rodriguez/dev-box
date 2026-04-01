@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Helper functions for entrypoint.sh
 # - create_user: create a user, set password, configure sudo
 # - validate_users_json: validate USERS_CREDENTIALS JSON
@@ -66,44 +66,70 @@ create_user() {
     fi
 }
 
-# Ensure any Chromium/Electron "chrome-sandbox" helper is owned by root and
-# has the setuid bit set so the native sandbox helper can run without
-# requiring an unconfined seccomp profile. This is more secure than
-# disabling seccomp and allows the sandbox to work inside Docker's default
-# profile.
-disable_electron_sandbox() {
-    # Look for common chrome-sandbox helpers (some packages or builds may
-    # have slight name differences). Resolve symlinks, print diagnostics to
-    # the container logs and make the resolved file owned by root with the
-    # setuid bit so Chromium/Electron can create namespaces under Docker's
-    # default seccomp profile.
-    FOUND=0
-    for f in $(find / -path /proc -prune -o \( -name chrome-sandbox \) -print 2>/dev/null); do
-        FOUND=1
-    # resolve symlink if present
-    if [ -L "$f" ]; then
-        target=$(readlink -f "$f" 2>/dev/null) || target="$f"
-    else
-        target="$f"
-    fi
-    echo "[entrypoint] Found sandbox helper: $f -> $target" >&2
-    # show file type and permissions for debugging
-    file "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
-    ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
 
-    # try to make it owned by root and set the setuid bit
-    chown root:root "$target" 2>/dev/null || true
-    chmod a+x "$target" 2>/dev/null || true
-    chmod 4755 "$target" 2>/dev/null || true
-    ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
+# Deterministic runtime hook runner
+
+# Parameters:
+#   $1 -> SKIP_ENTRYPOINT_HOOKS (0/1)
+#   $2 -> ENTRYPOINT_STRICT (0/1)
+#   $3 -> HOOK_ROOT (MANDATORY) - directory containing hooks (e.g. /etc/entrypoint.d)
+#   $4 -> USERS_CREDENTIALS (MANDATORY) - name of an array variable (passed by name)
+#         containing JSON objects (each element will be passed as a separate
+#         argument to the hooks). Use a nameref in the function to access it.
+run_entrypoint_hooks() {
+    SKIP_HOOKS="${1:-0}"
+    ENTRYPOINT_STRICT="${2:-1}"
+    HOOK_ROOT="${3:-}"
+
+    [ "${SKIP_HOOKS}" -eq 1 ] && { echo "[entrypoint] SKIPPING hooks due to SKIP_ENTRYPOINT_HOOKS=1"; return 0; }
+
+    if [ -z "${HOOK_ROOT:-}" ]; then
+        echo "[entrypoint] ERROR: run_entrypoint_hooks requires HOOK_ROOT (3rd param)" >&2
+        exit 1
+    fi
+
+    if [ -z "${4:-}" ]; then
+      echo "[entrypoint] ERROR: missing USERS_CREDENTIALS (4th param)" >&2; 
+      exit 1
+    fi
+    local -n USERS_CREDENTIALS="$4"
+
+
+    phases=(pre main post)
+
+    # If no hook dir exists, nothing to do
+    shopt -s nullglob 2>/dev/null || true
+    for phase in "${phases[@]}"; do
+        dir="$HOOK_ROOT/$phase"
+        [ -d "$dir" ] || continue
+
+        # Collect and sort hooks in natural order (respects numeric prefixes)
+        mapfile -t hooks < <(printf '%s\n' "$dir"/*.sh 2>/dev/null | sort -V) || true
+        for hook in "${hooks[@]}"; do
+            [ -n "$hook" ] || continue
+            [ -f "$hook" ] || continue
+            
+            echo "[entrypoint] running hook $hook"
+            if ! (
+              . "$hook"
+              if ! declare -f entrypoint_hook >/dev/null 2>&1; then
+                echo "[entrypoint] ERROR: hook $hook must define function entrypoint_hook" >&2
+                false
+              else
+                entrypoint_hook users_credentials   # pass the array name so hook can `local -n u="$1"`
+              fi
+            ); then
+              # handle failure per ENTRYPOINT_STRICT
+              if [ "${ENTRYPOINT_STRICT}" -eq 1 ]; then
+                  echo "[entrypoint] exiting due to hook failure and ENTRYPOINT_STRICT=1" >&2
+                  exit 1
+              else
+                  echo "[entrypoint] continuing despite hook failure (ENTRYPOINT_STRICT!=1)"
+              fi
+            fi
+        done
     done
-    if [ "$FOUND" -eq 0 ]; then
-        echo "[entrypoint] No chrome-sandbox helper found on filesystem" >&2
-    fi
-
-    # As a fallback, export an environment variable. Some Electron builds
-    # also respect ELECTRON_DISABLE_SANDBOX.
-    export ELECTRON_DISABLE_SANDBOX=1
+    shopt -u nullglob 2>/dev/null || true
 }
 
 # Load USERS_CREDENTIALS from a secret file or environment and validate.
@@ -115,8 +141,6 @@ disable_electron_sandbox() {
 # On success prints the JSON to stdout. Returns non-zero on failure.
 
 load_users_json() {
-    out_path="${1:-/tmp/users_credentials.json.$$}"
-
     # Prefer secret file when present
     if [ -f /run/secrets/users_credentials ]; then
         echo "[entrypoint] Loading USERS_CREDENTIALS from /run/secrets/users_credentials" >&2
@@ -133,7 +157,7 @@ load_users_json() {
     validate_users_json "$json"
 
     # write validated json to requested path
-    printf '%s' "$json" > "$out_path"
+    printf '%s' "$json"
 }
 
 

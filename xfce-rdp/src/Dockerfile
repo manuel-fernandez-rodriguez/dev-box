@@ -2,12 +2,13 @@ FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+# Install mimimum dependencies for a functional XFCE desktop environment with 
+# XRDP support, plus some common utilities and tools.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         sudo \
         xfce4 \
-        xfce4-terminal \
+        xfce4-goodies \
         xorg \
         xrdp \
         pipewire \
@@ -38,6 +39,9 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
 
+# Unset, so that it is not propagated to the container at runtime
+ENV DEBIAN_FRONTEND=
+
 # Who can run the X server? Allow anybody
 RUN printf 'allowed_users=anybody\n' > /etc/X11/Xwrapper.config && \
     chmod 0444 /etc/X11/Xwrapper.config && \
@@ -46,15 +50,11 @@ RUN printf 'allowed_users=anybody\n' > /etc/X11/Xwrapper.config && \
 COPY startwm.sh /etc/xrdp/startwm.sh
 RUN chmod +x /etc/xrdp/startwm.sh
 
-# Copy entrypoint which will apply a runtime password from a Docker secret or environment
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY entrypoint_helpers.sh /usr/local/bin/entrypoint_helpers.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh && chmod 644 /usr/local/bin/entrypoint_helpers.sh || true
-
-# Allow consumers to persist user home directories by mounting a volume at /home.
-# This lets user homes survive container recreation; ownership is adjusted at
-# startup only when necessary by the entrypoint.
-VOLUME ["/home"]
+# Copy entrypoint which will create user at runtime based on environment variables,
+# run any custom entrypoint hooks, and set up the desktop environment
+COPY entrypoint.sh /etc/entrypoint.d/entrypoint.sh
+COPY entrypoint_helpers.sh /etc/entrypoint.d/entrypoint_helpers.sh
+RUN chmod +x /etc/entrypoint.d/entrypoint.sh && chmod 644 /etc/entrypoint.d/entrypoint_helpers.sh || true
 
 # Prefer a 24-bit default depth so X and xrdp negotiate a 24bpp visual.
 RUN mkdir -p /etc/X11/xorg.conf.d && \
@@ -93,4 +93,4 @@ RUN passwd -d root
 # Expose XRDP port
 EXPOSE 3389
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/etc/entrypoint.d/entrypoint.sh"]
