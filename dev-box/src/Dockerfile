@@ -1,47 +1,27 @@
-FROM debian:trixie-slim
+FROM local/xfce-rdp:latest
+
+# The base image `local/xfce-rdp:latest` already performs runtime configuration
+# such as copying `startwm.sh`, installing the entrypoint, setting X defaults,
+# configuring xrdp, PAM tweaks, exposing ports and creating the /home volume.
+# This derived Dockerfile only installs additional packages and tools specific
+# to the dev-box image (VS Code, .NET SDK, etc.).
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+# Install packages from debian repos
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        sudo \
-        xfce4 \
-        xfce4-goodies \
-        xorg \
-        xrdp \
-        pipewire \
-        pipewire-pulse \
-        wireplumber \
-        pipewire-module-xrdp \
-        pipewire-audio-client-libraries \
-        rtkit \
-        pulseaudio-utils \
-        dbus \
-        dbus-x11 \
-        gnome-keyring \
-        libpam-gnome-keyring \
-        libsecret-1-0 \
-        xserver-xorg-core \
-        xorgxrdp \
         git \
-        jq \
         firefox-esr \
         wget \
         curl \
-        gnupg \
-        ca-certificates \
-        apt-transport-https \
-        gvfs \
-        gvfs-backends \
-        tumbler \
-        librsvg2-common \
         adwaita-icon-theme \
-        at-spi2-core \
-        pm-utils \
     && apt-get autoremove -y --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
+
+COPY 500-dev-box-entrypoint.sh /etc/entrypoint.d/main/500-dev-box-entrypoint.sh
+RUN chmod 644 /etc/entrypoint.d/main/500-dev-box-entrypoint.sh || true
 
 # Install Visual Studio Code
 RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
@@ -109,59 +89,7 @@ RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PATH="$PATH:/usr/share/dotnet"
 
-
-RUN printf 'allowed_users=anybody\n' > /etc/X11/Xwrapper.config && \
-    chmod 0444 /etc/X11/Xwrapper.config && \
-    chmod +x /usr/share/xsessions/startxfce4 || true
-
-COPY startwm.sh /etc/xrdp/startwm.sh
-RUN chmod +x /etc/xrdp/startwm.sh
-
-# Copy entrypoint which will apply a runtime password from a Docker secret or environment
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY entrypoint_helpers.sh /usr/local/bin/entrypoint_helpers.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh && chmod 644 /usr/local/bin/entrypoint_helpers.sh || true
-
-# Allow consumers to persist user home directories by mounting a volume at /home.
-# This lets user homes survive container recreation; ownership is adjusted at
-# startup only when necessary by the entrypoint.
-VOLUME ["/home"]
-
-# Prefer a 24-bit default depth so X and xrdp negotiate a 24bpp visual.
-RUN mkdir -p /etc/X11/xorg.conf.d && \
-    printf 'Section "Screen"\n\tIdentifier "Screen0"\n\tDefaultDepth 24\n\tSubSection "Display"\n\t\tDepth 24\n\tEndSubSection\nEndSection\n' > /etc/X11/xorg.conf.d/99-xrdp-depth.conf
-
-# Ensure xrdp only advertises up to 24 bpp so clients must use 24-bit True Color.
-# If a max_bpp setting exists, replace it; otherwise add it under [globals].
-RUN if [ -f /etc/xrdp/xrdp.ini ]; then \
-      if grep -q '^max_bpp=' /etc/xrdp/xrdp.ini; then \
-        sed -i 's/^max_bpp=.*/max_bpp=24/' /etc/xrdp/xrdp.ini; \
-      else \
-        sed -i '/^\[globals\]/a max_bpp=24' /etc/xrdp/xrdp.ini; \
-      fi; \
-    fi
-
-# Configure PAM for xrdp-sesman to auto-unlock the GNOME keyring on login.
-# Insert pam_gnome_keyring lines into /etc/pam.d/xrdp-sesman if the file exists
-# and the lines are not already present.
-RUN if [ -f /etc/pam.d/xrdp-sesman ]; then \
-      if ! grep -q pam_gnome_keyring.so /etc/pam.d/xrdp-sesman; then \
-        # Try to insert after @include/common-auth and @include/common-session
-        sed -i '/^@include common-auth/ a auth optional pam_gnome_keyring.so' /etc/pam.d/xrdp-sesman || true; \
-        sed -i '/^@include common-session/ a session optional pam_gnome_keyring.so auto_start' /etc/pam.d/xrdp-sesman || true; \
-        sed -i '/^auth include common-auth/ a auth optional pam_gnome_keyring.so' /etc/pam.d/xrdp-sesman || true; \
-        sed -i '/^session include common-session/ a session optional pam_gnome_keyring.so auto_start' /etc/pam.d/xrdp-sesman || true; \
-        # Fallback: append to the end
-        echo 'auth optional pam_gnome_keyring.so' >> /etc/pam.d/xrdp-sesman; \
-        echo 'session optional pam_gnome_keyring.so auto_start' >> /etc/pam.d/xrdp-sesman; \
-      fi; \
-    fi
-
-# Remove root password
-RUN passwd -d root
+# Unset, so that it is not propagated to the container at runtime
+ENV DEBIAN_FRONTEND=
 
 
-# Expose XRDP port
-EXPOSE 3389
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
