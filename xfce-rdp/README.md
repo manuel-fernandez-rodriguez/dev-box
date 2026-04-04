@@ -7,7 +7,7 @@
 
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/manuel-fernandez-rodriguez/xfce-rdp/publish-image.yml)](https://github.com/manuel-fernandez-rodriguez/xfce-rdp/actions/workflows/publish-image.yml)
 [![GitHub License](https://img.shields.io/github/license/manuel-fernandez-rodriguez/xfce-rdp)](https://github.com/manuel-fernandez-rodriguez/xfce-rdp/blob/main/LICENSE.txt)
-[![Github Package](https://img.shields.io/badge/package-dev--box-latest)](https://github.com/manuel-fernandez-rodriguez/xfce-rdp/pkgs/container/xfce-rdp)
+[![Github Package](https://img.shields.io/badge/package-xfce--rdp-latest)](https://github.com/manuel-fernandez-rodriguez/xfce-rdp/pkgs/container/xfce-rdp)
 
 </div>
 
@@ -40,3 +40,8 @@ kubectl run xfce-rdp \
 ```
 
 See more detailed instructions on [Kubernetes setup](kubernetes.md).
+
+## Extending the image
+The image is designed to be extended with custom hooks that run at container startup.
+
+See [Extending the xfce-rdp base image](extending.md) for best practices and examples on how to add your own initialization logic without modifying the base image.
