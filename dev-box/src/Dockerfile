@@ -20,9 +20,6 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
 
-COPY 500-dev-box-entrypoint.sh /etc/entrypoint.d/main/500-dev-box-entrypoint.sh
-RUN chmod 644 /etc/entrypoint.d/main/500-dev-box-entrypoint.sh || true
-
 # Install Visual Studio Code
 RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
     install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/ && \
@@ -88,6 +85,10 @@ RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod
 
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PATH="$PATH:/usr/share/dotnet"
+
+# Copy the entry point hook
+COPY 500-dev-box-entrypoint.sh /etc/entrypoint.d/main/500-dev-box-entrypoint.sh
+RUN chmod 644 /etc/entrypoint.d/main/500-dev-box-entrypoint.sh || true
 
 # Unset, so that it is not propagated to the container at runtime
 ENV DEBIAN_FRONTEND=

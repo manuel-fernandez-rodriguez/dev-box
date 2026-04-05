@@ -43,6 +43,8 @@ disable_electron_sandbox() {
 
 entrypoint_hook() {
     local -n user_data="$1"    # nameref to caller's array
+
+    echo "[entrypoint] Hook started" >&2
   
     # Make global VS Code extensions available to the runtime user by creating
     # a per-user extension path that points to the global extensions installed
@@ -55,6 +57,7 @@ entrypoint_hook() {
             USER_VSCODE_DIR="/home/$username/.vscode"
             USER_EXT_DIR="$USER_VSCODE_DIR/extensions"
             if [ ! -e "$USER_EXT_DIR" ]; then
+                echo "[entrypoint] Installing VSCode extensions for $username" >&2
                 mkdir -p "$USER_VSCODE_DIR" || true
                 cp -a /usr/share/code/extensions "$USER_EXT_DIR" 2>/dev/null || true
                 chown -R "$username":"$username" "/home/$username/.vscode" 2>/dev/null || true
