@@ -35,6 +35,7 @@ RUN apt-get update && \
         librsvg2-common \
         at-spi2-core \
         pm-utils \
+        wmctrl \
     && apt-get autoremove -y --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*

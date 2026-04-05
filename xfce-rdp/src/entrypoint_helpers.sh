@@ -3,14 +3,17 @@
 # - create_user: create a user, set password, configure sudo
 # - validate_users_json: validate USERS_CREDENTIALS JSON
 
-# Usage: create_user username password [sudo_flag]
+# Usage: create_user username password [sudo_flag] [singleapp]
 # Both username and password are required. If either is missing the function
 # will print an error and exit with a non-zero status.
 # If sudo_flag is "true" (string) the user will be granted passwordless sudo.
+# If singleapp is provided, a per-user ~/.xsession wrapper will be created
+# containing the provided command line so a single-application session can run.
 create_user() {
     USER="$1"
     PASS="$2"
     SUDO_FLAG="${3:-}"
+    SINGLEAPP="${4:-}"
 
     created=0
 
@@ -53,6 +56,19 @@ create_user() {
         chown -R "$USER":"$USER" "$HOME_DIR" 2>/dev/null || true
     fi
 
+    # Create per-user ~/.xsession when SINGLEAPP is provided.
+    # The wrapper will start a minimal window manager (if available), launch
+    # the requested single application, attempt to maximize its window using
+    # wmctrl (if installed) and wait for the app to exit so the session
+    # terminates cleanly.
+    if [ -n "${SINGLEAPP:-}" ]; then
+        XSESSION_PATH="$HOME_DIR/.xsession"
+        echo "[entrypoint] Creating $XSESSION_PATH for user $USER"
+        create_singleapp_xsession "$XSESSION_PATH" "$SINGLEAPP"
+        chown "$USER":"$USER" "$XSESSION_PATH" 2>/dev/null || true
+        chmod 0755 "$XSESSION_PATH" 2>/dev/null || true
+    fi
+
     # Set password only when the user was created by this entrypoint.
     # This avoids overwriting passwords changed by users in a persisted home volume.
     if [ "$created" -eq 1 ]; then
@@ -64,6 +80,127 @@ create_user() {
     else
         echo "[entrypoint] User '$USER' already exists; leaving password unchanged" >&2
     fi
+}
+
+
+# Create the ~/.xsession contents for a single-app session.
+# Parameters:
+#  $1 -> path to write (e.g. /home/user/.xsession)
+#  $2 -> SINGLEAPP command line
+create_singleapp_xsession() {
+    local path="$1"
+    local singleapp="$2"
+
+    cat > "$path" <<'XSESSION' 2>/dev/null || true
+#!/usr/bin/env bash
+set -e
+# inherit DISPLAY from the environment (do not hardcode a display number)
+# xrdp / sesman provides a per-session DISPLAY; leaving it unchanged
+# create a per-session runtime dir that includes the display so multiple
+# sessions (even for the same UID) do not conflict
+XDG_RUNTIME_DIR="/tmp/xdg-runtime-$(id -u)-${DISPLAY//[^[:alnum:]]/_}"
+mkdir -p "$XDG_RUNTIME_DIR" || true
+chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+# export DISPLAY if provided so tools like xprop use the correct display
+if [ -n "${DISPLAY:-}" ]; then
+  export DISPLAY
+fi
+
+# capture stdout/stderr from this generated session script to a log file
+# in the per-session runtime dir so we can debug failures
+exec >> "$XDG_RUNTIME_DIR/.xsession.log" 2>&1 || true
+
+# small debug dump for diagnosing why the WM may not start
+printf '=== .xsession start: %s PID=%s USER=%s DISPLAY=%s ===\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$(id -un)" "${DISPLAY:-}" 
+echo "ENV:" && env
+echo "PS:" && ps aux
+echo "XPROP ROOT:" && xprop -root _NET_SUPPORTING_WM_CHECK 2>&1 || true
+echo "-- end debug header --"
+
+# export XAUTHORITY only if the session provides it; do not force a
+# single global ~/.Xauthority which can collide between concurrent sessions
+if [ -n "${XAUTHORITY:-}" ]; then
+  export XAUTHORITY
+fi
+
+# wait briefly for X authority to be usable if present
+if [ -n "${XAUTHORITY:-}" ]; then
+  for i in $(seq 1 50); do
+    [ -r "$XAUTHORITY" ] && break || sleep 0.1
+  done
+fi
+
+# Start a per-session DBus (so session-managed apps can connect)
+if command -v dbus-launch >/dev/null 2>&1; then
+  eval "$(dbus-launch --sh-syntax --exit-with-session)" || true
+fi
+
+# start a lightweight window manager if none is running on this display
+WM_PID=
+# xprop may report different messages when the property is missing
+# treat the property as present only when a hex window id (0x...) is returned
+wm_check=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null || true)
+if ! printf '%s' "$wm_check" | grep -q '0x[0-9a-fA-F]'; then
+  # prefer openbox (simple standalone WM) then xfwm4
+  if command -v openbox >/dev/null 2>&1; then
+    echo "[entrypoint] Starting openbox window manager" >&2
+    setsid openbox >"$XDG_RUNTIME_DIR/openbox.log" 2>&1 & WM_PID=$! || true
+  elif command -v xfwm4 >/dev/null 2>&1; then
+    echo "[entrypoint] Starting xfwm4 window manager" >&2
+    setsid xfwm4 >"$XDG_RUNTIME_DIR/xfwm4.log" 2>&1 & WM_PID=$! || true
+  elif command -v matchbox-window-manager >/dev/null 2>&1; then
+    echo "[entrypoint] Starting matchbox-window-manager" >&2
+    setsid matchbox-window-manager >"$XDG_RUNTIME_DIR/matchbox.log" 2>&1 & WM_PID=$! || true
+  else
+    echo "[entrypoint] WARNING: no supported window manager found; windows may be unmanaged" >&2
+  fi
+
+  # wait for the window manager to register with the X server (look for 0x id)
+  for i in $(seq 1 50); do
+    wm_check=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null || true)
+    printf '%s' "$wm_check" | grep -q '0x[0-9a-fA-F]' && break || sleep 0.1
+  done
+
+  if ! printf '%s' "$wm_check" | grep -q '0x[0-9a-fA-F]'; then
+    echo "[entrypoint] WARNING: window manager did not register _NET_SUPPORTING_WM_CHECK; windows may be unmanaged" >&2
+    # try xfwm4 as a fallback if available
+      if command -v xfwm4 >/dev/null 2>&1 && ! pgrep -x xfwm4 >/dev/null 2>&1; then
+      echo "[entrypoint] Attempting to start xfwm4 as fallback" >&2
+      setsid xfwm4 >"$XDG_RUNTIME_DIR/xfwm4.log" 2>&1 & WM_PID=$! || true
+      sleep 0.5
+    fi
+  fi
+fi
+
+XSESSION
+    # write SINGLEAPP assignment (shell-escaped)
+    printf 'SINGLEAPP=%q\n' "$singleapp" >> "$path" 2>/dev/null || true
+    cat >> "$path" <<'XSESSION_TAIL'
+APP_CMD="$SINGLEAPP"
+eval "$APP_CMD" &
+APP_PID=$!
+
+if command -v wmctrl >/dev/null 2>&1; then
+  WIN=""
+  for i in $(seq 1 80); do
+    # try to find window by PID first
+    WIN=$(wmctrl -lp 2>/dev/null | awk -v pid=$APP_PID '$3==pid {print $1; exit}') || true
+    if [ -n "$WIN" ]; then
+      break
+    fi
+    # fallback: try matching WM_CLASS using the app command basename
+    CB=$(basename "$SINGLEAPP" | awk '{print tolower($0)}')
+    WIN=$(wmctrl -lx 2>/dev/null | awk -v cb="$CB" '{ if (index(tolower($3), cb)) {print $1; exit}}') || true
+    [ -n "$WIN" ] && break || sleep 0.1
+  done
+  [ -n "$WIN" ] && wmctrl -ir "$WIN" -b add,maximized_vert,maximized_horz || true
+fi
+
+wait "$APP_PID" || true
+XSESSION_TAIL
+
+
 }
 
 

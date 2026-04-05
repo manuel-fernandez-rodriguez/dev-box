@@ -19,7 +19,8 @@ for u in "${users_credentials[@]}"; do
     uname=$(jq -r '.username // empty' <<<"$u")
     upw=$(jq -r '.password // empty' <<<"$u")
     usudo=$(jq -r '.sudo // false' <<<"$u")
-    create_user "$uname" "$upw" "$usudo"
+    singleApp=$(jq -r '.singleApp // empty' <<<"$u")
+    create_user "$uname" "$upw" "$usudo" "$singleApp"
 done
 
 # Run hooks (if any) before starting services or executing user command

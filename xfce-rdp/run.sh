@@ -54,7 +54,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Default users JSON (used only if ./users.json is not present)
-default_users='[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t"}]'
+default_users='[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t", "singleApp": "/usr/bin/xfce4-terminal" }, {"username":"developer3","password":"s3cr3t", "singleApp": "/usr/bin/xfce4-terminal" }]'
 
 # Build docker run arguments conditionally
 docker_args=()
