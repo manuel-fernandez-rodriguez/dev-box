@@ -13,7 +13,9 @@ image="local/dev-box:latest"
 container="dev-box"
 host_port="33890"
 shm_size="1g"
-volume_name=""
+home_bind=""
+home_volume=""
+home_volume_specified=0
 
 show_help() {
   cat <<EOF
@@ -24,7 +26,10 @@ Options:
   --container NAME      Container name (default: ${container})
   --host-port PORT      Host port to publish to 3389 (default: ${host_port})
   --shm-size SIZE       Size passed to --shm-size (default: ${shm_size})
-  --home-volume VOLUME  Name of docker volume to create and mount at /home (optional)
+  --home-bind PATH       Host path to bind-mount at /home (optional)
+  --home-volume NAME     Name of the docker volume to mount at /home. If the
+                         option is provided without a NAME it defaults to
+                         "${container}-home". (optional)
   -h, --help            Show this help and exit
 EOF
 }
@@ -40,15 +45,17 @@ while [ "$#" -gt 0 ]; do
     --host-port) host_port="$2"; shift 2;;
     --shm-size=*) shm_size="${1#*=}"; shift;;
     --shm-size) shm_size="$2"; shift 2;;
-    --home-volume=*) volume_name="${1#*=}"; shift;;
-    --home-volume) volume_name="$2"; shift 2;;
+    --home-bind=*) home_bind="${1#*=}"; shift;;
+    --home-bind) home_bind="$2"; shift 2;;
+    --home-volume=*) home_volume="${1#*=}"; shift;;
+    --home-volume) home_volume="$2"; home_volume_specified=1; shift 2;;
     -h|--help) show_help; exit 0;;
     *) echo "Unknown option: $1" >&2; show_help; exit 1;;
   esac
 done
 
 # Default users JSON (used only if ./users.json is not present)
-default_users='[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t"}]'
+default_users='[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t"}, {"username":"developer3","password":"s3cr3t", "singleApp": "/usr/lib/firefox-esr/firefox-esr -kiosk -private-window \"https://www.google.com/\"" }]'
 
 # Build docker run arguments conditionally
 docker_args=()
@@ -61,11 +68,22 @@ else
   docker_args+=( -e "USERS_CREDENTIALS=${default_users}" )
 fi
 
-# If a volume name was provided, create it (idempotent) and mount it at /home
-if [ -n "${volume_name}" ]; then
-  docker volume create "${volume_name}" >/dev/null || true
-  docker_args+=( -v "${volume_name}:/home" )
+# If a host path was provided, bind-mount it at /home.
+if [ -n "${home_bind}" ]; then
+  # Ensure host path exists
+  mkdir -p "${home_bind}"
+  docker_args+=( -v "${home_bind}:/home" )
+fi
+
+# Only create and mount a named volume when --home-volume was explicitly provided
+if [ "${home_volume_specified}" -eq 1 ]; then
+  # determine volume name: provided via --home-volume or default to ${container}-home
+  if [ -z "${home_volume}" ]; then
+    home_volume="${container}-home"
+  fi
+  docker volume create "${home_volume}" >/dev/null || true
+  docker_args+=( -v "${home_volume}:/home" )
 fi
 
 docker run "${docker_args[@]}" \
-  -p "${host_port}:3389" --shm-size=${shm_size} -d --name "${container}" "${image}"
+  -p "${host_port}:3389" --shm-size=${shm_size} -d -it --name "${container}" "${image}"
