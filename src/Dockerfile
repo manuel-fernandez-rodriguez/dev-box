@@ -1,4 +1,6 @@
-FROM local/xfce-rdp:latest
+# allow selecting the base image via build-arg (default is the local image for dev)
+#it will be changed in CI pipelines to point to the published image in the registry
+FROM ghcr.io/manuel-fernandez-rodriguez/xfce-rdp:latest
 
 # The base image `local/xfce-rdp:latest` already performs runtime configuration
 # such as copying `startwm.sh`, installing the entrypoint, setting X defaults,
