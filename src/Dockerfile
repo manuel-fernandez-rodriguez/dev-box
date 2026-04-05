@@ -17,7 +17,6 @@ RUN apt-get update && \
         firefox-esr \
         wget \
         curl \
-        adwaita-icon-theme \
     && apt-get autoremove -y --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
