@@ -23,7 +23,7 @@ via Remote Desktop Protocol (RDP), with preinstalled:
 ## Quick Run on Docker
 
 ```bash
-docker run -e USERS_CREDENTIALS='[{"username":"developer","password":"s3cr3t","sudo":true}]' \
+docker run -e RUNTIME_CONFIG='{"userCredentials":[{"username":"developer","password":"s3cr3t","sudo":true}]}' \
   -p 33890:3389 --shm-size=1g -d --name dev-box dev-box:latest
 ```
 
@@ -35,7 +35,7 @@ See more detailed instructions on [Docker setup](docker.md).
 kubectl run dev-box \
   --image=ghcr.io/manuel-fernandez-rodriguez/dev-box:latest \
   --restart=Never --port=3389 --image-pull-policy=IfNotPresent \
-  --env="USERS_CREDENTIALS=[{\"username\":\"developer\",\"password\":\"s3cr3t\",\"sudo\":true}]" \
+  --env="RUNTIME_CONFIG={\"userCredentials\":[{\"username\":\"developer\",\"password\":\"s3cr3t\",\"sudo\":true}]}" \
   --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"dev-box","volumeMounts":[{"name":"dshm","mountPath":"/dev/shm"}]}],"volumes":[{"name":"dshm","emptyDir":{"medium":"Memory","sizeLimit":"1Gi"}}]}}'
 ```
 
