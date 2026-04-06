@@ -4,9 +4,9 @@ set -euo pipefail
 # Usage: ./run.sh [--image IMAGE] [--container NAME] [--host-port PORT] [--shm-size SIZE] [--home-volume VOLUME]
 # Defaults: image=local/dev-box:latest, container=dev-box, host_port=33890, shm_size=1g
 # If --home-volume is provided, a docker volume with that name will be created (if needed)
-# and mounted at /home in the container. If a local ./users.json file exists it will be
-# bind-mounted into /run/secrets/users_credentials:ro. Otherwise the script will pass a
-# default USERS_CREDENTIALS environment variable into the container.
+# and mounted at /home in the container. If a local ./runtime_config.json file exists it will be
+# bind-mounted into /run/secrets/runtime_config:ro. Otherwise the script will pass a
+# default RUNTIME_CONFIG environment variable into the container.
 
 # Defaults
 image="local/dev-box:latest"
@@ -58,18 +58,19 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Default users JSON (used only if ./users.json is not present)
-default_users='[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t"}, {"username":"developer3","password":"s3cr3t", "singleApp": "/usr/lib/firefox-esr/firefox-esr -kiosk -private-window \"https://www.google.com/\"" }]'
+# Default runtime config JSON (used only if ./runtime_config.json is not present)
+default_runtime_config='{"userCredentials":[{"username":"developer","password":"s3cr3t","sudo":true}, {"username":"developer2","password":"s3cr3t"}, {"username":"developer3","password":"s3cr3t", "singleApp": "/usr/lib/firefox-esr/firefox-esr -kiosk -private-window \"https://www.google.com/\"" }]}'
 
 # Build docker run arguments conditionally
 docker_args=()
 
-# If a local users.json exists, mount it as a read-only secret file. Otherwise pass the
-# USERS_CREDENTIALS environment variable.
-if [ -f ./users.json ]; then
-  docker_args+=( -v "$(pwd)/users.json:/run/secrets/users_credentials:ro" )
+# If a local runtime_config.json exists, mount it as a read-only secret file.
+# Otherwise pass the RUNTIME_CONFIG environment variable containing the runtime
+# configuration object.
+if [ -f ./runtime_config.json ]; then
+  docker_args+=( -v "$(pwd)/runtime_config.json:/run/secrets/runtime_config:ro" )
 else
-  docker_args+=( -e "USERS_CREDENTIALS=${default_users}" )
+  docker_args+=( -e "RUNTIME_CONFIG=${default_runtime_config}" )
 fi
 
 # If a host path was provided, bind-mount it at /home.

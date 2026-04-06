@@ -42,10 +42,13 @@ disable_electron_sandbox() {
 
 
 entrypoint_hook() {
-    local -n user_data="$1"    # nameref to caller's array
+    runtime_config_path="$1"
 
     echo "[entrypoint] Hook started" >&2
-  
+
+    # Read user entries from runtime config
+    mapfile -t user_data < <(jq -c '.userCredentials[]' "$runtime_config_path" 2>/dev/null || true)
+
     # Make global VS Code extensions available to the runtime user by creating
     # a per-user extension path that points to the global extensions installed
     # at build time. Prefer a symlink, fall back to copying if symlink fails.
