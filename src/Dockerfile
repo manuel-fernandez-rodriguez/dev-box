@@ -88,8 +88,8 @@ ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PATH="$PATH:/usr/share/dotnet"
 
 # Copy the entry point hook
-COPY 500-dev-box-entrypoint.sh /etc/entrypoint.d/main/500-dev-box-entrypoint.sh
-RUN chmod 644 /etc/entrypoint.d/main/500-dev-box-entrypoint.sh || true
+COPY 500-dev-box-entrypoint.sh /etc/xfce-rdp/hooks/entrypoint/main/500-dev-box-entrypoint.sh
+RUN chmod 644 /etc/xfce-rdp/hooks/entrypoint/main/500-dev-box-entrypoint.sh || true
 
 # Unset, so that it is not propagated to the container at runtime
 ENV DEBIAN_FRONTEND=

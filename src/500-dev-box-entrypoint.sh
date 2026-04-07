@@ -40,8 +40,7 @@ disable_electron_sandbox() {
     export ELECTRON_DISABLE_SANDBOX=1
 }
 
-
-entrypoint_hook() {
+hook() {
     runtime_config_path="$1"
 
     echo "[entrypoint] Hook started" >&2

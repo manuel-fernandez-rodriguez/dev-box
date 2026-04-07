@@ -20,7 +20,7 @@ with preinstalled:
 - Visual Studio Code
 - C# DevKit
 - Firefox
-- Plus all the goodies in xfce-rdp image
+- Plus all the goodies already included in xfce-rdp image
 
 ## Quick Run on Docker
 
