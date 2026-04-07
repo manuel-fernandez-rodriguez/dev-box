@@ -20,6 +20,7 @@ with preinstalled:
 - Visual Studio Code
 - C# DevKit
 - Firefox
+- Plus all the goodies in xfce-rdp image
 
 ## Quick Run on Docker
 
@@ -28,7 +29,7 @@ docker run -e RUNTIME_CONFIG='{"userCredentials":[{"username":"developer","passw
   -p 33890:3389 --shm-size=1g -d --name dev-box dev-box:latest
 ```
 
-See more detailed instructions on [Docker setup](docs/docker.md).
+See more detailed instructions on [Docker setup](doc/docker.md).
 
 ## Quick Run on Kubernetes
 
@@ -40,4 +41,9 @@ kubectl run dev-box \
   --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"dev-box","volumeMounts":[{"name":"dshm","mountPath":"/dev/shm"}]}],"volumes":[{"name":"dshm","emptyDir":{"medium":"Memory","sizeLimit":"1Gi"}}]}}'
 ```
 
-See more detailed instructions on [Kubernetes setup](docs/kubernetes.md).
+See more detailed instructions on [Kubernetes setup](doc/kubernetes.md).
+
+## Extending this image
+See [Extending the xfce-rdp base image](https://github.com/manuel-fernandez-rodriguez/xfce-rdp/blob/main/doc/extending.md) for best practices 
+and examples on how to add your own initialization logic without modifying 
+the base image.
