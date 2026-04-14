@@ -14,22 +14,22 @@ disable_electron_sandbox() {
     FOUND=0
     for f in $(find / -path /proc -prune -o \( -name chrome-sandbox \) -print 2>/dev/null); do
         FOUND=1
-    # resolve symlink if present
-    if [ -L "$f" ]; then
-        target=$(readlink -f "$f" 2>/dev/null) || target="$f"
-    else
-        target="$f"
-    fi
-    echo "[entrypoint] Found sandbox helper: $f -> $target" >&2
-    # show file type and permissions for debugging
-    file "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
-    ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
+        # resolve symlink if present
+        if [ -L "$f" ]; then
+            target=$(readlink -f "$f" 2>/dev/null) || target="$f"
+        else
+            target="$f"
+        fi
+        echo "[entrypoint] Found sandbox helper: $f -> $target" >&2
+        # show file type and permissions for debugging
+        file "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
+        ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
 
-    # try to make it owned by root and set the setuid bit
-    chown root:root "$target" 2>/dev/null || true
-    chmod a+x "$target" 2>/dev/null || true
-    chmod 4755 "$target" 2>/dev/null || true
-    ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
+        # try to make it owned by root and set the setuid bit
+        chown root:root "$target" 2>/dev/null || true
+        chmod a+x "$target" 2>/dev/null || true
+        chmod 4755 "$target" 2>/dev/null || true
+        ls -l "$target" 2>/dev/null | sed 's/^/  /' >&2 || true
     done
     if [ "$FOUND" -eq 0 ]; then
         echo "[entrypoint] No chrome-sandbox helper found on filesystem" >&2
