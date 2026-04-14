@@ -1,5 +1,4 @@
-# allow selecting the base image via build-arg (default is the local image for dev)
-#it will be changed in CI pipelines to point to the published image in the registry
+# See https://github.com/manuel-fernandez-rodriguez/xfce-rdp
 FROM ghcr.io/manuel-fernandez-rodriguez/xfce-rdp:latest
 
 # The base image `local/xfce-rdp:latest` already performs runtime configuration
@@ -21,7 +20,7 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
 
-# Install Visual Studio Code
+# BEGIN: Install Visual Studio Code
 RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
     install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/ && \
     sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list' && \
@@ -30,18 +29,6 @@ RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor 
     apt-get autoremove -y --purge && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* microsoft.gpg /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
-
-# Make sure any chrome-sandbox helper installed with VS Code is owned by
-# root and has the setuid bit so Chromium/Electron sandbox helpers can
-# create namespaces inside Docker's default seccomp profile.
-RUN for f in /usr/share/code/chrome-sandbox /usr/lib/code/chrome-sandbox /opt/visual-studio-code/chrome-sandbox; do \
-      if [ -f "$f" ]; then \
-        chown root:root "$f" || true; \
-        chmod a+x "$f" || true; \
-        chmod 4755 "$f" || true; \
-      fi; \
-    done || true
-
 
 # Install c# extensions for Visual Studio Code (installed as root so they
 # are available to any user created at runtime).
@@ -73,8 +60,9 @@ RUN printf 'export ELECTRON_DISABLE_SANDBOX=1\n' > /etc/profile.d/disable-electr
     printf '#!/bin/sh\nexec /usr/share/code/code --no-sandbox --disable-gpu "$@"\n' > /usr/bin/code && \
     chmod +x /usr/bin/code || true
 
+# END: Install Visual Studio Code
 
-# Install .NET 10 SDK via Microsoft's apt repository
+# BEGIN: Install .NET 10 SDK via Microsoft's apt repository
 RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
     dpkg -i packages-microsoft-prod.deb && \
     rm packages-microsoft-prod.deb && \
@@ -86,10 +74,33 @@ RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod
 
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PATH="$PATH:/usr/share/dotnet"
+# END: Install .NET 10 SDK via Microsoft's apt repository
+
+# BEGIN: Install Bruno
+RUN wget https://github.com/usebruno/bruno/releases/download/v3.2.2/bruno_3.2.2_amd64_linux.deb -O bruno.deb && \
+    apt-get update && \
+    apt-get install -y \
+        libxss1 && \
+    dpkg -i bruno.deb && \
+    rm bruno.deb && \
+    apt-get autoremove -y --purge && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
+
+# Create wrapper and update the desktop entry
+RUN printf '#!/bin/sh\nexport ELECTRON_DISABLE_SANDBOX=1\nexec setsid /opt/Bruno/bruno --disable-gpu --disable-gpu-compositing --no-sandbox "$@" >/dev/null 2>&1 < /dev/null\n' > /usr/local/bin/bruno-wrapper && \
+    chmod +x /usr/local/bin/bruno-wrapper || true && \
+    mkdir -p /etc/skel/.local/share/applications && \
+    if [ -f /usr/share/applications/bruno.desktop ]; then \
+      sed 's|^Exec=.*|Exec=/usr/local/bin/bruno-wrapper %U|' /usr/share/applications/bruno.desktop > /etc/skel/.local/share/applications/bruno.desktop || true; \
+      chmod 644 /etc/skel/.local/share/applications/bruno.desktop || true; \
+    fi || true
+
+# END: Install Bruno
 
 # Copy the entry point hook
-COPY 500-dev-box-entrypoint.sh /etc/entrypoint.d/main/500-dev-box-entrypoint.sh
-RUN chmod 644 /etc/entrypoint.d/main/500-dev-box-entrypoint.sh || true
+COPY 500-dev-box-container-start.sh /etc/xfce-rdp/hooks/container-start/main/500-dev-box-container-start.sh
+RUN chmod 644 /etc/xfce-rdp/hooks/container-start/main/500-dev-box-container-start.sh || true
 
 # Unset, so that it is not propagated to the container at runtime
 ENV DEBIAN_FRONTEND=

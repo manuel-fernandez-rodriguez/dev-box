@@ -262,7 +262,7 @@ spec:
 3. Apply manifests
 
 ```bash
-kubectl apply -f secret-users-credentials.yaml
+kubectl apply -f secret-runtime-config.yaml
 kubectl apply -f pvc.yaml
 kubectl apply -f deployment.yaml
 kubectl apply -f service.yaml
