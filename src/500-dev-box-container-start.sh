@@ -67,6 +67,45 @@ hook() {
         done
     fi
 
+    # Configure Git Credential Manager for the runtime user.
+     # Configure Git Credential Manager for each runtime user (not just root).
+    # Run the configuration as the target user so files end up in their $HOME.
+    for u in "${user_data[@]}"; do
+        [ -z "$u" ] && continue
+        username=$(jq -r '.username // empty' <<<"$u")
+        [ -z "$username" ] && continue
+
+        if ! id "$username" >/dev/null 2>&1; then
+            echo "[entrypoint] User $username does not exist; skipping GCM config" >&2
+            continue
+        fi
+
+        echo "[entrypoint] Configuring Git Credential Manager for user: $username" >&2
+
+        # Prefer runuser, fall back to su or sudo. Each command runs GCM and
+        # sets the git global setting for that user's home.
+        if command -v runuser >/dev/null 2>&1; then
+            runuser -u "$username" -- git-credential-manager configure || true
+            runuser -u "$username" -- git config --global credential.credentialStore cache || true
+        elif command -v su >/dev/null 2>&1; then
+            su - "$username" -c 'git-credential-manager configure || true'
+            su - "$username" -c 'git config --global credential.credentialStore cache || true'
+        elif command -v sudo >/dev/null 2>&1; then
+            sudo -u "$username" -- sh -c 'git-credential-manager configure || true; git config --global credential.credentialStore cache || true'
+        else
+            # As a last resort, try to set HOME and run commands in the current shell.
+            HOME_DIR="/home/$username"
+            if [ -d "$HOME_DIR" ]; then
+                HOME="$HOME_DIR" git-credential-manager configure || true
+                HOME="$HOME_DIR" git config --global credential.credentialStore cache || true
+            fi
+        fi
+
+        # Ensure any created config files are owned by the target user.
+        chown -R "$username":"$username" "/home/$username/.config" "/home/$username/.gitconfig" 2>/dev/null || true
+    done
+
+
     # Find any Chromium/Electron "chrome-sandbox" helpers, make them owned by root
     # and set the setuid bit so sandbox helpers can operate inside container.
     disable_electron_sandbox
