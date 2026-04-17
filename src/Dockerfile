@@ -14,14 +14,24 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         git \
         firefox-esr \
-        wget \
         curl \
     && apt-get autoremove -y --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
 
+# BEGIN: Install Git Credential Manager (GCM)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates libsecret-1-0 && \
+    curl -fSL -o /tmp/gcm.deb "https://github.com/git-ecosystem/git-credential-manager/releases/download/v2.7.3/gcm-linux-x64-2.7.3.deb" && \
+    dpkg -i /tmp/gcm.deb && \
+    apt-get -y --no-install-recommends -f install && \
+    rm -f /tmp/gcm.deb && \
+    apt-get autoremove -y --purge && apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+# END: Install Git Credential Manager (GCM)
+
 # BEGIN: Install Visual Studio Code
-RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
     install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/ && \
     sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list' && \
     apt-get update && \
@@ -63,7 +73,7 @@ RUN printf 'export ELECTRON_DISABLE_SANDBOX=1\n' > /etc/profile.d/disable-electr
 # END: Install Visual Studio Code
 
 # BEGIN: Install .NET 10 SDK via Microsoft's apt repository
-RUN wget https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+RUN curl -fsSL -o packages-microsoft-prod.deb https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb && \
     dpkg -i packages-microsoft-prod.deb && \
     rm packages-microsoft-prod.deb && \
     apt-get update && \
@@ -77,7 +87,7 @@ ENV PATH="$PATH:/usr/share/dotnet"
 # END: Install .NET 10 SDK via Microsoft's apt repository
 
 # BEGIN: Install Bruno
-RUN wget https://github.com/usebruno/bruno/releases/download/v3.2.2/bruno_3.2.2_amd64_linux.deb -O bruno.deb && \
+RUN curl -fsSL -o bruno.deb https://github.com/usebruno/bruno/releases/download/v3.2.2/bruno_3.2.2_amd64_linux.deb && \
     apt-get update && \
     apt-get install -y \
         libxss1 && \
