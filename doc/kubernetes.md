@@ -56,6 +56,24 @@ kubectl run dev-box `
   --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"dev-box","volumeMounts":[{"name":"dshm","mountPath":"/dev/shm"}]}],"volumes":[{"name":"dshm","emptyDir":{"medium":"Memory","sizeLimit":"1Gi"}}]}}'
 ```
 
+The same previous command, but adding support for RDP drive sharing (requires additional permissions, so use with caution):
+```bash
+kubectl run dev-box \
+  --image=ghcr.io/manuel-fernandez-rodriguez/dev-box:latest \
+  --restart=Never --port=3389 --image-pull-policy=IfNotPresent \
+  --env='RUNTIME_CONFIG={"userCredentials":[{"username":"developer","password":"s3cr3t","sudo":true}]}' \
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"dev-box","securityContext":{"capabilities":{"add":["SYS_ADMIN"]}},"volumeMounts":[{"name":"dshm","mountPath":"/dev/shm"},{"name":"dev-fuse","mountPath":"/dev/fuse"}]}],"volumes":[{"name":"dshm","emptyDir":{"medium":"Memory","sizeLimit":"1Gi"}},{"name":"dev-fuse","hostPath":{"path":"/dev/fuse","type":"CharDevice"}}]}}'
+```
+PowerShell (use single quotes around the JSON payload):
+
+```powershell
+kubectl run dev-box `
+  --image=ghcr.io/manuel-fernandez-rodriguez/dev-box:latest `
+  --restart=Never --port=3389 --image-pull-policy=IfNotPresent `
+  --env='RUNTIME_CONFIG={"userCredentials":[{"username":"developer","password":"s3cr3t","sudo":true}]}' `
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"dev-box","securityContext":{"capabilities":{"add":["SYS_ADMIN"]}},"volumeMounts":[{"name":"dshm","mountPath":"/dev/shm"},{"name":"dev-fuse","mountPath":"/dev/fuse"}]}],"volumes":[{"name":"dshm","emptyDir":{"medium":"Memory","sizeLimit":"1Gi"}},{"name":"dev-fuse","hostPath":{"path":"/dev/fuse","type":"CharDevice"}}]}}'
+```
+
 Note: `--overrides` is handy for quick testing, but using a Pod manifest (as 
 shown in the next section) is clearer and more reproducible. Also, `sizeLimit`
 may be ignored on older Kubernetes versions — test on your cluster.
@@ -114,7 +132,46 @@ other pods.
   `kubectl apply -f dev-box-pod.yaml`
   `kubectl port-forward pod/dev-box 33890:3389`
 
+## Optional: Add support for RDP drive sharing.
+**Note:** _This is not recommended for production since it requires additional 
+permissions, so use with caution and only if you understand the security 
+implications._
 
+In the pod spec you need to:
+  1. Mount the host device /dev/fuse into the container via a hostPath volume, and
+  2. Add the SYS_ADMIN capability in the container securityContext.
+  3. If your node or cluster enforces seccomp or PodSecurity admission policies
+     you may also need to relax the seccomp profile or allow the 
+     capability/hostPath at cluster policy level.
+
+
+Example volume and securityContext additions to the container spec:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dev-box-fuse
+spec:
+  containers:
+  - name: dev-box
+    image: local/dev-box:latest
+    securityContext:
+      capabilities:
+        add: ["SYS_ADMIN"]
+      # Uncomment to disable seccomp for the container if your cluster's default profile
+      # blocks required syscalls:
+      # seccompProfile:
+      #   type: Unconfined
+    volumeMounts:
+    - name: dev-fuse
+      mountPath: /dev/fuse
+      readOnly: false
+  volumes:
+  - name: dev-fuse
+    hostPath:
+      path: /dev/fuse
+      type: CharDevice
+```
 ## Optional: expose externally via a NodePort Service (save as `dev-box-svc.yaml`):
 
 ```yaml
