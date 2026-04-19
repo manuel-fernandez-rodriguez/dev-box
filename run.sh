@@ -17,6 +17,7 @@ home_bind=""
 home_volume=""
 home_volume_specified=0
 force=0
+local_drives_support=0
 
 show_help() {
   cat <<EOF
@@ -32,6 +33,9 @@ Options:
                         option is provided without a NAME it defaults to
                         "${container}-home". (optional)
   --force               Remove any existing container with the same name before starting (optional)
+  --local-drives-support
+                        Add container permissions to enable RDP client drive
+                        redirection (adds: --device /dev/fuse --cap-add SYS_ADMIN).
   -h, --help            Show this help and exit
 EOF
 }
@@ -51,6 +55,8 @@ while [ "$#" -gt 0 ]; do
     --home-bind) home_bind="$2"; shift 2;;
     --home-volume=*) home_volume="${1#*=}"; shift;;
     --home-volume) home_volume="$2"; home_volume_specified=1; shift 2;;
+    --local-drives-support=*) local_drives_support="${1#*=}"; shift;;
+    --local-drives-support) local_drives_support=1; shift;;
     --force=*) force="${1#*=}"; shift;;
     --force) force=1; shift;;
     -h|--help) show_help; exit 0;;
@@ -88,6 +94,12 @@ if [ "${home_volume_specified}" -eq 1 ]; then
   fi
   docker volume create "${home_volume}" >/dev/null || true
   docker_args+=( -v "${home_volume}:/home" )
+fi
+
+# If local drives support was requested, add required device/capabilities
+if [ "${local_drives_support}" -ne 0 ]; then
+  docker_args+=( --device /dev/fuse )
+  docker_args+=( --cap-add SYS_ADMIN )
 fi
 
 # If a container with the same name exists, either fail or remove it when --force is used.

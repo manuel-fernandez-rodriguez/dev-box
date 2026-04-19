@@ -108,8 +108,7 @@ RUN printf '#!/bin/sh\nexport ELECTRON_DISABLE_SANDBOX=1\nexec setsid /opt/Bruno
 
 # END: Install Bruno
 
-# Copy the entry point hook
-COPY 500-dev-box-container-start.sh /etc/xfce-rdp/hooks/container-start/main/500-dev-box-container-start.sh
+COPY filesystem/ /
 RUN chmod 644 /etc/xfce-rdp/hooks/container-start/main/500-dev-box-container-start.sh || true
 
 # Unset, so that it is not propagated to the container at runtime
